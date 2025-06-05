@@ -1,0 +1,236 @@
+---
+title: "Análise de uma replicação"
+output:
+    html_document:
+    df_print: paged
+theme: sandstone
+params: 
+    arquivo_dados: "C:/LabDadosR/lab04/brasilia .csv"
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(broom)
+library(ggbeeswarm)
+library(gridExtra)
+theme_set(theme_bw())
+
+knitr::opts_chunk$set(tidy = FALSE,
+                      fig.width = 6,
+                      fig.height = 5)
+
+```
+
+# Sobre Implicit Association Tests (IAT) -- Olhe o README do repositório. 
+
+IAT: 0.15, 0.35, and 0.65 are considered small, medium, and large levels of bias for individual scores. Positive means bias towards arts / against Math. 
+
+# Exemplo de análise de uma replicação
+
+```{r}
+iat = read_csv(here::here(params$arquivo_dados), col_types = "cccdc")
+iat = iat %>% 
+    mutate(sex = factor(sex, levels = c("m", "f"), ordered = TRUE))
+glimpse(iat)
+```
+
+```{r}
+iat %>%
+    ggplot(aes(x = d_art, fill = sex, color = sex)) +
+    geom_histogram(binwidth = .2, alpha = .4) +
+    geom_rug() +
+    facet_grid(sex ~ ., scales = "free_y") + 
+    theme(legend.position = "None")
+```
+
+```{r}
+iat %>% 
+    ggplot(aes(x = sex, y = d_art)) + 
+    geom_quasirandom(width = .1)
+```
+
+```{r}
+iat %>% 
+    ggplot(aes(x = sex, y = d_art)) + 
+    geom_quasirandom(width = .1) + 
+    stat_summary(geom = "point", fun.y = "mean", color = "red", size = 5)
+```
+
+##### Qual a diferença na amostra
+
+```{r}
+iat %>% 
+    group_by(sex) %>% 
+    summarise(media = mean(d_art))
+```
+
+```{r}
+agrupado = iat %>% 
+        group_by(sex) %>% 
+        summarise(media = mean(d_art))
+    m = agrupado %>% filter(sex == "m") %>% pull(media)
+    f = agrupado %>% filter(sex == "f") %>% pull(media)
+m - f
+```
+
+#### Comparação via ICs
+
+```{r}
+library(boot)
+
+theta <- function(d, i) {
+    agrupado = d %>% 
+        slice(i) %>% 
+        group_by(sex) %>% 
+        summarise(media = mean(d_art))
+    m = agrupado %>% filter(sex == "m") %>% pull(media)
+    f = agrupado %>% filter(sex == "f") %>% pull(media)
+    m - f
+}
+
+booted <- boot(data = iat, 
+               statistic = theta, 
+               R = 2000)
+
+ci = tidy(booted, 
+          conf.level = .95,
+          conf.method = "bca",
+          conf.int = TRUE)
+
+glimpse(ci)
+```
+
+```{r}
+ci %>%
+    ggplot(aes(
+        x = "",
+        y = statistic,
+        ymin = conf.low,
+        ymax = conf.high
+    )) +
+    geom_pointrange() +
+    geom_point(size = 3) + 
+    labs(x = "Diferença", 
+         y = "IAT homens - mulheres")
+```
+
+```{r}
+p1 = iat %>% 
+    ggplot(aes(x = sex, y = d_art)) +
+    geom_quasirandom(width = .1) + 
+    stat_summary(geom = "point", fun.y = "mean", color = "red", size = 5)
+
+p2 = ci %>%
+    ggplot(aes(
+        x = "",
+        y = statistic,
+        ymin = conf.low,
+        ymax = conf.high
+    )) +
+    geom_pointrange() +
+    geom_point(size = 3) + 
+    ylim(-1, 1) + 
+    labs(x = "Diferença", 
+         y = "IAT homens - mulheres")
+
+grid.arrange(p1, p2, ncol = 2)
+```
+
+### Conclusão 
+
+###### Preencha os resultados e conclusões abaixo
+
+Em média, as mulheres que participaram do experimento tiveram uma associação implícita (medida pelo IAT) com a matemática positiva e média (média 0.47, desv. padrão 0.55, N = 117).
+Homens tiveram uma associação positiva com a matemática, portanto menor que a das mulheres (média 0.22, desv. padrão 0.49, N = 38).
+Houve portanto uma pequena diferença entre homens e mulheres (diferença das médias -0.24, 95% CI [-0.43, -0.06]). A partir desta amostra, estimamos que pode não haver uma diferença entre sexos, ou se ela existir, ela provavelmente é pequena em qualquer das direções. 
+
+--- 
+*Exemplos de possíveis conclusões para completar*
+
+  * mulheres têm uma associação negativa consideravelmente mais forte, com uma diferença que provavelmente está entre 0.6 e 1.0 ponto na escala IAT, o suficiente para diferenciar uma associação neutra de uma muito forte contra a matemática.
+  * mulheres têm uma associação negativa mais forte, porém não é claro se essa diferença é grande, moderada ou pequena. É necessário coletar mais dados para determinar se a diferença é relevante ou negligenciável. 
+  * mulheres podem ter um associação negativa forte, pode não haver diferença entre sexos ou homens podem ter atitudes negativas um pouco mais fortes ou moderadamente mais fortes. 
+  * pode não haver uma diferença entre sexos, ou se ela existir, ela provavelmente é pequena em qualquer das direções. 
+
+###### Realize novas análises sobre IAT usando as abordagens a seguir
+
+Realize a análise e compare as conclusões obtidas nos dois casos experimentados:
+
+1. bootstraps a partir de uma bibliotece (exemplo acima)
+
+```{r}
+library(tidyverse)
+library(ggbeeswarm)
+
+# Carregar os dados
+iat <- read_csv("C:/LabDadosR/lab04/brasilia .csv", col_types = "cccdc") %>%
+  mutate(sex = factor(sex, levels = c("m", "f"), ordered = TRUE))
+
+# Criar o gráfico
+ggplot(iat, aes(x = sex, y = d_art)) +
+  geom_violin(fill = "lightgray", color = NA, alpha = 0.5) +
+  geom_quasirandom(width = 0.1, alpha = 0.6, color = "blue") +
+  stat_summary(fun = mean, geom = "point", color = "red", size = 3) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.1, color = "red") +
+  labs(
+    title = "Distribuição dos Escores IAT por Sexo",
+    x = "Sexo",
+    y = "Escores IAT (d_art)"
+  ) +
+  theme_minimal()
+
+
+
+```
+
+
+
+2. bootstraps implementados por você (justifique o método de IC com bootstraps escolhido)
+
+O método BCa (Bias-Corrected and Accelerated) é uma técnica para calcular intervalos de confiança em análises de bootstrap. Ele é especialmente útil quando a distribuição da estatística de interesse (como a média ou a diferença de médias) é assimétrica ou enviesada.
+
+A diferença de médias entre sexos pode ter uma distribuição assimétrica.
+
+O método BCa fornece um intervalo de confiança que leva em conta tanto o viés quanto a forma da distribuição, oferecendo uma estimativa mais confiável da incerteza.
+
+Aqui está o código em R que implementa um bootstrap manual com intervalo de confiança BCa (via boot::boot) e visualiza os resultados com ggplot2:`
+
+``` {r}
+
+library(tidyverse)
+library(boot)
+library(ggbeeswarm)
+
+# Carregar os dados
+iat <- read_csv("C:/LabDadosR/lab04/brasilia .csv", col_types = "cccdc") %>%
+  mutate(sex = factor(sex, levels = c("m", "f"), ordered = TRUE))
+
+# Função para calcular a diferença de médias
+theta <- function(data, indices) {
+  d <- data[indices, ]
+  m <- mean(d$d_art[d$sex == "m"])
+  f <- mean(d$d_art[d$sex == "f"])
+  return(m - f)
+}
+
+# Executar bootstrap com método BCa
+set.seed(123)
+booted <- boot(data = iat, statistic = theta, R = 2000)
+ci_bca <- boot.ci(booted, type = "bca")
+
+# Visualização com ggplot2
+ggplot(iat, aes(x = sex, y = d_art)) +
+  geom_violin(fill = "gray90", color = NA) +
+  geom_quasirandom(width = 0.1, alpha = 0.6, color = "blue") +
+  stat_summary(fun = mean, geom = "point", color = "red", size = 3) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.1, color = "red") +
+  labs(
+    title = "Distribuição dos Escores IAT por Sexo com IC (BCa)",
+    x = "Sexo",
+    y = "Escores IAT (d_art)"
+  ) +
+  theme_minimal()
+
+
+```
+
